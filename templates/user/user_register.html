@@ -1,0 +1,130 @@
+{% extends 'user/user_layout.html' %}
+
+{% block title %}Register - SnapCart{% endblock %}
+
+{% block content %}
+<style>
+    body {
+        background: linear-gradient(135deg, #b39ddb, #d1c4e9);
+        margin: 0;
+    }
+
+    .page-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 90vh; /* Leave room for navbar */
+        padding-top: 50px;
+        padding-bottom: 50px;
+    }
+
+    .login-container {
+        width: 450px;
+        padding: 35px;
+        background: white;
+        border-radius: 15px;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        animation: fadeIn 0.8s ease-in-out;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(-20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .login-container h2 {
+        text-align: center;
+        font-weight: bold;
+        color: #5e35b1;
+    }
+
+    .form-control {
+        border-radius: 10px;
+        padding: 12px;
+        border: 1px solid #9575cd;
+    }
+
+    .btn-primary {
+        background: #7e57c2;
+        border: none;
+        padding: 12px;
+        border-radius: 10px;
+        font-size: 16px;
+        transition: 0.3s;
+    }
+
+    .btn-primary:hover {
+        background: #5e35b1;
+    }
+
+    .text-center span {
+        color: #9575cd;
+        font-weight: normal;
+    }
+
+    .text-center a {
+        color: #5e35b1;
+        text-decoration: none;
+        font-weight: bold;
+    }
+
+    .text-center a:hover {
+        text-decoration: underline;
+    }
+</style>
+
+<div class="page-container">
+    <div class="login-container">
+        <h2>User Register</h2>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="mb-4">
+                    <ul class="list-unstyled">
+                        {% for category, message in messages %}
+                            <li class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                                {{ message }}
+                                <button type="button" class="close" data-bs-dismiss="alert" aria-label="Close">
+                                    <span aria-hidden="true">&times;</span>
+                                </button>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+
+                {% for category, message in messages %}
+                    {% if category == 'success' %}
+                        <script>
+                            setTimeout(function() {
+                                window.location.href = "{{ url_for('user_home') }}";
+                            }, 2000);
+                        </script>
+                    {% endif %}
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <form action="{{ url_for('user_register') }}" method="POST">
+            <div class="mb-3">
+                <label for="name" class="form-label">Name</label>
+                <input type="text" class="form-control" id="name" name="name" placeholder="Enter name" required>
+            </div>
+            <div class="mb-3">
+                <label for="username" class="form-label">Username</label>
+                <input type="text" class="form-control" id="username" name="username" placeholder="Enter username" required>
+            </div>
+            <div class="mb-3">
+                <label for="password" class="form-label">Password</label>
+                <input type="password" class="form-control" id="password" name="password" placeholder="Enter password" required>
+            </div>
+            <button type="submit" class="btn btn-primary w-100">Register</button>
+        </form>
+
+        <div class="text-center mt-3">
+            <span>Already have an account? </span><a href="{{ url_for('user_login') }}">Login</a>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+{% endblock %}

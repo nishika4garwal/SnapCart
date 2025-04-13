@@ -1,0 +1,103 @@
+{% extends 'user/final_layout.html' %}
+
+{% block content %}
+<style>
+    .text-purple {
+        color: #6f42c1;
+    }
+
+    .bg-purple {
+        background-color: #6f42c1;
+    }
+
+    .btn-snap {
+        background-color: #6f42c1;
+        color: white;
+        border: none;
+        transition: 0.3s ease-in-out;
+    }
+
+    .btn-snap:hover {
+        background-color: #59339c;
+        color: #fff;
+    }
+
+    .table thead th {
+        background-color: #6f42c1;
+        color: white;
+    }
+
+    .table td, .table th {
+        vertical-align: middle;
+    }
+
+    .rounded-pill {
+        border-radius: 50rem !important;
+    }
+
+    .shadow-sm {
+        box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important;
+    }
+
+    .shadow {
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+    }
+
+    .btn-outline-danger {
+        color: #dc3545;
+        border-color: #dc3545;
+        background-color: transparent;
+    }
+
+    .btn-outline-danger:hover {
+        background-color: #dc3545;
+        color: white;
+    }
+
+    .order-summary {
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        padding: 20px;
+        margin-top: 30px;
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.1);
+    }
+</style>
+
+<div class="container mt-5">
+    <h2 class="text-purple mb-4">Your Orders</h2>
+
+    {% if orders %}
+        <div class="table-responsive shadow rounded-4 overflow-hidden">
+            <table class="table table-bordered align-middle text-center mb-0">
+                <thead class="bg-purple text-white">
+                    <tr>
+                        <th>Product</th>
+                        <th>Quantity</th>
+                        <th>Price</th>
+                        <th>Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for order in orders %}
+                        <tr>
+                            <td>{{ order.product.name }}</td>
+                            <td>{{ order.quantity }}</td>
+                            <td>₹{{ order.price }}</td>
+                            <td>{{ order.datetime.strftime('%d %b %Y, %I:%M %p') }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="order-summary mt-4">
+            <h5 class="text-purple">Order Summary</h5>
+            <p><strong>Total Items:</strong> {{ orders|length }}</p>
+            <p><strong>Grand Total:</strong> ₹{{ orders|sum(attribute='price') | round(2)}}</p>
+            <a href="{{ url_for('user_home') }}" class="btn btn-snap rounded-pill px-4 py-2">Continue Shopping</a>
+        </div>
+    {% else %}
+        <div class="alert alert-info text-center shadow-sm">You haven't placed any orders yet!</div>
+    {% endif %}
+</div>
+{% endblock %}

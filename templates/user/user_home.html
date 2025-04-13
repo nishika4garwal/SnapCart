@@ -1,0 +1,127 @@
+{% extends 'user/final_layout.html' %}
+{% block content %}
+<style>
+    body {
+        background-color: #f5e9ff;
+        font-family: 'Poppins', sans-serif;
+    }
+    .btn-snap {
+        background-color: #4a148c;
+        color: white;
+    }
+    .btn-snap:hover {
+        background-color: #380a63;
+        color: white;
+    }
+    .product-card {
+        border-radius: 15px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        transition: 0.3s;
+        background-color: #ffffff;
+    }
+    .product-card:hover {
+        transform: translateY(-5px);
+    }
+    .category-scroll select {
+        border-radius: 10px;
+        border: 2px solid #4a148c;
+        padding: 5px 15px;
+    }
+    h4 {
+        color: #4a148c;
+        font-weight: 600;
+    }
+</style>
+
+<div class="container py-4">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="mb-4">
+                <ul class="list-unstyled">
+                    {% for category, message in messages %}
+                        <li class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="close" data-bs-dismiss="alert" aria-label="Close">
+                                <span aria-hidden="true">&times;</span>
+                            </button>
+                        </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <!-- Search Bar + Category Filter -->
+    <form method="GET" action="{{ url_for('user_home') }}" class="mb-4 d-flex gap-2 flex-wrap">
+        <input type="text" name="search" class="form-control w-auto" placeholder="Search for products..." value="{{ request.args.get('search', '') }}">
+        <select name="category_id" class="form-select w-auto">
+            <option value="">All Categories</option>
+            {% for category in categories %}
+                <option value="{{ category.id }}" {% if request.args.get('category_id') == category.id|string %}selected{% endif %}>{{ category.name }}</option>
+            {% endfor %}
+        </select>
+        <button class="btn btn-snap" type="submit">Filter</button>
+    </form>
+
+    <!-- Products Grouped by Category -->
+    {% if products %}
+        {% for category in categories %}
+            {% set cat_products = products|selectattr("category.id", "equalto", category.id)|list %}
+            {% if cat_products %}
+            <div class="mb-4">
+                <h4 class="mb-3">{{ category.name }}</h4>
+                <div class="row">
+                    {% for product in cat_products %}
+                    <div class="col-md-4 mb-3">
+                        <div class="card product-card p-3">
+                            <h5 class="card-title">{{ product.name }}</h5>
+                            <p class="card-text mb-1">Price: ₹{{ '%.2f'|format(product.price) }}</p>
+                            <form method="POST" action="{{ url_for('add_to_cart', product_id=product.id) }}" class="add-to-cart-form">
+                                <button class="btn btn-sm btn-snap w-100">Add to Cart</button>
+                            </form>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        {% endfor %}
+    {% else %}
+        <p class="text-center">{{ no_products_message }}</p>
+    {% endif %}
+</div>
+
+<!-- JavaScript: Handle Flash & Scroll -->
+<script>
+    // Restore scroll position after reload
+    window.addEventListener('load', function () {
+        const scrollY = localStorage.getItem('scrollY');
+        if (scrollY !== null) {
+            window.scrollTo(0, parseInt(scrollY));
+            localStorage.removeItem('scrollY');
+        }
+
+        // Smooth flash dismiss
+        setTimeout(() => {
+            document.querySelectorAll('.alert').forEach(alert => {
+                alert.style.transition = "opacity 0.5s ease";
+                alert.style.opacity = 0;
+                setTimeout(() => alert.remove(), 500);
+            });
+        }, 3000);
+    });
+
+//     // Save scroll position before form submit (add to cart)
+//     document.querySelectorAll('.add-to-cart-form').forEach(form => {
+//     form.addEventListener('submit', () => {
+//         localStorage.setItem('scrollY', window.scrollY);
+        
+//         // Wait for 3 seconds and then scroll back
+//         setTimeout(() => {
+//             window.scrollTo(0, localStorage.getItem('scrollY'));
+//         }, 5000); // 3000ms = 3 seconds
+//     });
+// });
+
+</script>
+{% endblock %}
