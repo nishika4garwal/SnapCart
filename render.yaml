@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: your-app-name
+    name: SnapCart
     env: docker
     plan: free
     dockerfilePath: ./Dockerfile
