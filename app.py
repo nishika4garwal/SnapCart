@@ -21,7 +21,7 @@ migrate = Migrate(app, db)
 # with app.app_context():
 #     db.create_all()
 
-import routes  # Import routes after app and db are initialized
+from routes import * # Import routes after app and db are initialized
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))  # Render provides this
