@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session
-from flask_sqlalchemy import SQLAlchemy # type: ignore
+import flask_sqlalchemy 
 from flask_migrate import Migrate # type: ignore
 from models import db, User, Product, Category, Cart, Order  # Import models
 import config

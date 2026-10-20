@@ -1,0 +1,104 @@
+{% extends 'user/final_layout.html' %}
+
+{% block title %}Payment - SnapCart{% endblock %}
+
+{% block content %}
+<div class="payment-container">
+    <h2>Complete Your Payment</h2>
+
+    <p>Total amount:
+        <strong>₹{{ "%.2f"|format(total) }}</strong>
+    </p>
+
+    <button type="button" id="rzp-button1">
+        Pay with Razorpay
+    </button>
+
+    <p id="payment-message" role="status"></p>
+</div>
+
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+
+<script>
+    const razorpayKeyId = {{ key_id | tojson }};
+    const razorpayOrderId = {{ razorpay_order_id | tojson }};
+    const amountPaise = {{ amount_paise | tojson }};
+
+    const payButton = document.getElementById("rzp-button1");
+    const message = document.getElementById("payment-message");
+
+    const options = {
+        key: razorpayKeyId,
+        amount: amountPaise,
+        currency: "INR",
+        name: "SnapCart",
+        description: "Grocery Order",
+        order_id: razorpayOrderId,
+
+        handler: async function (response) {
+            payButton.disabled = true;
+            message.textContent = "Verifying payment...";
+
+            try {
+                const result = await fetch("/verify-payment", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    credentials: "same-origin",
+                    body: JSON.stringify({
+                        razorpay_order_id:
+                            response.razorpay_order_id,
+                        razorpay_payment_id:
+                            response.razorpay_payment_id,
+                        razorpay_signature:
+                            response.razorpay_signature
+                    })
+                });
+
+                const data = await result.json();
+
+                message.textContent = data.message ||
+                    "Unable to verify payment.";
+
+                if (result.ok && data.success) {
+                    window.location.href =
+                        data.redirect_url || "/";
+                } else {
+                    payButton.disabled = false;
+                }
+            } catch (error) {
+                console.error("Verification error:", error);
+                message.textContent =
+                    "Could not confirm the order. Please check your orders before retrying.";
+                payButton.disabled = false;
+            }
+        },
+
+        modal: {
+            ondismiss: function () {
+                message.textContent =
+                    "Payment window closed. Your order has not been confirmed.";
+            }
+        },
+
+        theme: {
+            color: "#3399cc"
+        }
+    };
+
+    const razorpayCheckout = new Razorpay(options);
+
+    razorpayCheckout.on("payment.failed", function (response) {
+        console.error("Payment failed:", response.error);
+        message.textContent =
+            response.error.description ||
+            "Payment failed. Please try again.";
+    });
+
+    payButton.addEventListener("click", function () {
+        message.textContent = "";
+        razorpayCheckout.open();
+    });
+</script>
+{% endblock %}
