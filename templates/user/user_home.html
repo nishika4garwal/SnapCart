@@ -27,6 +27,55 @@
         border: 2px solid #4a148c;
         padding: 5px 15px;
     }
+    /* Default pagination links */
+    .pagination .page-link {
+        color: #4a148c;
+    }
+
+    /* Active page */
+    .pagination .page-item.active .page-link {
+        background-color: #4a148c;
+        border-color: #4a148c;
+        color: white;
+    }
+
+    /* Hover effect */
+    .pagination .page-link:hover {
+        background-color: #d1c4e9;
+        border-color: #4a148c;
+        color: #4a148c;
+    }
+
+    /* Focus effect */
+    .pagination .page-link:focus {
+        box-shadow: 0 0 0 0.25rem rgba(74, 20, 140, 0.25);
+    }
+        /* Default outline button */
+    .btn-outline-secondary {
+        color: #4a148c;
+        border-color: #4a148c;
+        background-color: transparent;
+    }
+
+    /* Hover and focus */
+    .btn-outline-secondary:hover,
+    .btn-outline-secondary:focus {
+        color: white;
+        background-color: #4a148c;
+        border-color: #4a148c;
+    }
+
+    /* When clicked */
+    .btn-outline-secondary:active {
+        color: white !important;
+        background-color: #380a63 !important;
+        border-color: #380a63 !important;
+    }
+
+    /* Keyboard focus ring */
+    .btn-outline-secondary:focus-visible {
+        box-shadow: 0 0 0 0.25rem rgba(74, 20, 140, 0.25);
+    }
     h4 {
         color: #4a148c;
         font-weight: 600;
@@ -51,46 +100,173 @@
         {% endif %}
     {% endwith %}
 
-    <!-- Search Bar + Category Filter -->
-    <form method="GET" action="{{ url_for('user_home') }}" class="mb-4 d-flex gap-2 flex-wrap">
-        <input type="text" name="search" class="form-control w-auto" placeholder="Search for products..." value="{{ request.args.get('search', '') }}">
-        <select name="category_id" class="form-select w-auto">
-            <option value="">All Categories</option>
-            {% for category in categories %}
-                <option value="{{ category.id }}" {% if request.args.get('category_id') == category.id|string %}selected{% endif %}>{{ category.name }}</option>
-            {% endfor %}
-        </select>
-        <button class="btn btn-snap" type="submit">Filter</button>
+    <!-- Page Content -->
+<div class="container py-4">
+
+    <!-- Category Navigation -->
+    <h4 class="mb-3">Shop by Category</h4>
+
+    <div class="d-flex flex-wrap gap-2 mb-4">
+
+        <a href="{{ url_for('user_home', search=request.args.get('search', '')) }}"
+           class="btn btn-snap">
+            All Products
+        </a>
+
+        {% for category in categories %}
+        <a href="{{ url_for('user_home',
+                            category_id=category.id,
+                            search=request.args.get('search', '')) }}"
+           class="btn {% if selected_category and selected_category.id == category.id %}btn-snap{% else %}btn-outline-secondary{% endif %}">
+            {{ category.name }}
+        </a>
+        {% endfor %}
+
+    </div>
+    <!-- Search Bar -->
+    <form method="GET"
+        action="{{ url_for('user_home') }}"
+        class="mb-4 d-flex gap-2 flex-wrap">
+
+        <input
+            type="text"
+            name="search"
+            class="form-control"
+            placeholder="Search for products..."
+            value="{{ request.args.get('search', '') }}"
+        >
+
+        {% if selected_category %}
+        <input
+            type="hidden"
+            name="category_id"
+            value="{{ selected_category.id }}"
+        >
+        {% endif %}
+
+        <button class="btn btn-snap" type="submit">
+            <i class="fas fa-search"></i> Search
+        </button>
+
+        <a href="{{ url_for('user_home') }}"
+        class="btn btn-outline-secondary">
+            <i class="fas fa-times"></i> Clear Filters
+        </a>
+
     </form>
 
-    <!-- Products Grouped by Category -->
-    {% if products %}
-        {% for category in categories %}
-            {% set cat_products = products|selectattr("category.id", "equalto", category.id)|list %}
-            {% if cat_products %}
-            <div class="mb-4">
-                <h4 class="mb-3">{{ category.name }}</h4>
-                <div class="row">
-                    {% for product in cat_products %}
-                    <div class="col-md-4 mb-3">
-                        <div class="card product-card p-3">
-                            <h5 class="card-title">{{ product.name }}</h5>
-                            <p class="card-text mb-1">Price: ₹{{ '%.2f'|format(product.price) }}</p>
-                            <form method="POST" action="{{ url_for('add_to_cart', product_id=product.id) }}" class="add-to-cart-form">
-                                <button class="btn btn-sm btn-snap w-100">Add to Cart</button>
-                            </form>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
-            {% endif %}
-        {% endfor %}
-    {% else %}
-        <p class="text-center">{{ no_products_message }}</p>
-    {% endif %}
-</div>
+    <!-- Product Heading -->
+    <h4 class="mb-3">
+        {% if selected_category %}
+            {{ selected_category.name }}
+        {% else %}
+            All Products
+        {% endif %}
+    </h4>
 
+    <!-- Product Grid -->
+    {% if products %}
+
+    <div class="row">
+
+        {% for product in products %}
+
+        <div class="col-12 col-sm-6 col-lg-4 col-xl-3 mb-3">
+
+            <div class="card product-card p-3 h-100">
+
+                <h5 class="card-title">
+                    {{ product.name }}
+                </h5>
+
+                <p class="card-text mb-3">
+                    Price: ₹{{ '%.2f'|format(product.price) }}
+                </p>
+
+                <form method="POST"
+                      action="{{ url_for('add_to_cart', product_id=product.id) }}"
+                      class="mt-auto">
+
+                    <button type="submit"
+                            class="btn btn-sm btn-snap w-100">
+                        Add to Cart
+                    </button>
+
+                </form>
+
+            </div>
+
+        </div>
+
+        {% endfor %}
+
+    </div>
+
+    <!-- Pagination -->
+    {% if pagination.pages > 1 %}
+
+    <nav aria-label="Product pages" class="mt-4">
+        <ul class="pagination justify-content-center">
+
+            <!-- Previous -->
+            <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+                <a class="page-link"
+                   href="{{ url_for('user_home',
+                       page=pagination.prev_num,
+                       search=request.args.get('search', ''),
+                       category_id=request.args.get('category_id', '')) if pagination.has_prev else '#' }}">
+                    Previous
+                </a>
+            </li>
+
+            <!-- Page Numbers -->
+            {% for page_num in pagination.iter_pages() %}
+
+                {% if page_num %}
+
+                <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
+                    <a class="page-link"
+                       href="{{ url_for('user_home',
+                           page=page_num,
+                           search=request.args.get('search', ''),
+                           category_id=request.args.get('category_id', '')) }}">
+                        {{ page_num }}
+                    </a>
+                </li>
+
+                {% else %}
+
+                <li class="page-item disabled">
+                    <span class="page-link">...</span>
+                </li>
+
+                {% endif %}
+
+            {% endfor %}
+
+            <!-- Next -->
+            <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+                <a class="page-link"
+                   href="{{ url_for('user_home',
+                       page=pagination.next_num,
+                       search=request.args.get('search', ''),
+                       category_id=request.args.get('category_id', '')) if pagination.has_next else '#' }}">
+                    Next
+                </a>
+            </li>
+
+        </ul>
+    </nav>
+
+    {% endif %}
+
+    {% else %}
+
+    <p class="text-center mt-4">No products found.</p>
+
+    {% endif %}
+
+</div>
 <!-- JavaScript: Handle Flash & Scroll -->
 <script>
     // Restore scroll position after reload

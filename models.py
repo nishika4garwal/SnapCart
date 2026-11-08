@@ -14,6 +14,7 @@ class User(db.Model):
     username = db.Column(db.String(32), unique=True, nullable=False)
     passhash = db.Column(db.String(512), nullable=False)
     name = db.Column(db.String(64), nullable=True)
+    email = db.Column(db.String(255), unique=True, nullable=True)
 
     @property
     def password(self):

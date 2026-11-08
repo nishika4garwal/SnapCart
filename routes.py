@@ -1,9 +1,13 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, abort
 from models import db, Admin, User, Product, Category, Cart, Order, Payment
-from app import app  # Import the Flask app instance
+from app import app
+from extensions import limiter
 from functools import wraps
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
+from flask_dance.contrib.google import google
+from email_service import send_order_confirmation_email
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.exc import SQLAlchemyError
 from payment import (
     KEY_ID,
@@ -36,6 +40,65 @@ def auth_required(func):
             return redirect(url_for('user_login'))
         return func(*args, **kwargs)
     return inner
+
+@app.route("/google-login")
+@limiter.limit("5 per minute")
+def google_login_callback():
+    if not google.authorized:
+        return redirect(url_for("google.login"))
+
+    response = google.get("/oauth2/v2/userinfo")
+
+    if not response.ok:
+        flash("Could not retrieve your Google account.", "danger")
+        return redirect(url_for("user_login"))
+
+    google_user = response.json()
+    email = google_user.get("email")
+    email_verified = google_user.get("verified_email", False)
+    name = google_user.get("name", "")
+
+    if not email or not email_verified:
+        flash("Please use a Google account with a verified email.", "danger")
+        return redirect(url_for("user_login"))
+
+    try:
+        user = User.query.filter_by(email=email).first()
+
+        if user is None:
+            # Create a username that is unique in SnapCart.
+            base_username = email.split("@")[0][:24] or "google_user"
+            username = base_username
+            counter = 1
+
+            while User.query.filter_by(username=username).first():
+                suffix = f"_{counter}"
+                username = base_username[:32 - len(suffix)] + suffix
+                counter += 1
+
+            # This account uses Google login, not a local password.
+            user = User(
+                username=username,
+                name=name[:64] if name else username,
+                email=email,
+                password=os.urandom(32).hex()
+            )
+            db.session.add(user)
+            db.session.commit()
+
+        session.clear()
+        session["user_id"] = user.id
+
+        flash("Signed in with Google successfully!", "success")
+        return redirect(url_for("user_home"))
+
+    except IntegrityError:
+        db.session.rollback()
+        flash(
+            "This Google account could not be linked. Please try again.",
+            "danger"
+        )
+        return redirect(url_for("user_login"))
 
 # --------------------- profile ---------------------
 @app.route('/profile', methods = ['POST','GET'])
@@ -73,6 +136,7 @@ def profile():
 
 # --------------------- user login ---------------------
 @app.route('/user_login', methods=['GET', 'POST'])
+@limiter.limit("5 per minute")
 def user_login():
     if request.method == 'POST':
         username = request.form.get('username')
@@ -112,6 +176,7 @@ def user_register():
         password = request.form['password']
         name = request.form['name']
         username = request.form['username']
+        email = request.form.get("email", "").strip().lower()
 
         if username == 'admin' or password == 'admin':
             flash('Invalid credentials. Please try again.', 'danger')
@@ -124,7 +189,8 @@ def user_register():
         user = User( 
             username=username,
             password=password, 
-            name=name
+            name=name,
+            email=email
         )
         
         db.session.add(user)
@@ -228,61 +294,6 @@ def add_to_cart(product_id):
 def place_order():
     return redirect(url_for("payment"))
 
-# @app.route('/place_order')
-# @auth_required
-# def place_order():
-#     user_id = session['user_id']
-#     user = User.query.get(user_id)
-#     cart_items = Cart.query.filter_by(user_id=user_id).all()
-
-#     if not cart_items:
-#         flash('Your cart is empty!', 'info')
-#         return redirect(url_for('view_cart'))
-
-#     placed_orders = []
-#     grand_total = 0
-
-#     for item in cart_items:
-#         product = Product.query.get(item.product_id)
-#         if not product:
-#             flash(f"Product not found for cart item ID {item.id}", "danger")
-#             continue
-
-#         total_price = product.price * item.quantity
-#         grand_total += total_price
-
-#         order = Order(
-#             user_id=user_id,
-#             product_id=product.id,
-#             quantity=item.quantity,
-#             price=product.price,
-#             datetime=datetime.now()
-#         )
-
-#         #will send the req to external payment api
-#                 #will get an order id from the same
-#                 #send it to client that opens a payment page
-#                 #after successful payment, creates payment id
-#                 #send order and payment id to server (here)
-#                 #check if this matches what we were expecting
-
-#         db.session.add(order)
-#         placed_orders.append(order)
-
-#         # ❌ Do NOT delete product even if quantity == 0
-#         # ✅ It remains in DB, just with quantity 0
-
-#         db.session.delete(item)  # Remove from cart
-
-#     db.session.commit()
-
-#     flash('Order placed successfully!', 'success')
-#     return render_template(
-#         'user/order_placed.html',
-#         user=user,
-#         order_items=placed_orders,
-#         grand_total=grand_total
-#     )
 
 # --------------------- View Orders ---------------------
 @app.route("/orders")
@@ -298,33 +309,59 @@ def view_orders():
 @auth_required
 def user_home():
     search_query = request.args.get("search", "").strip()
-    category_id = request.args.get("category_id")
+    category_id = request.args.get("category_id", "").strip()
+    page = request.args.get("page", 1, type=int)
 
     categories = Category.query.all()
-    
+
     # Start with all products
     products_query = Product.query
 
-    # Filter by search term if provided
+    # Search by product name
     if search_query:
-        products_query = products_query.filter(Product.name.ilike(f"%{search_query}%"))
+        products_query = products_query.filter(
+            Product.name.ilike(f"%{search_query}%")
+        )
 
-    # Filter by selected category if provided
+    # Filter by category
+    selected_category = None
+
     if category_id:
-        products_query = products_query.filter_by(category_id=category_id)
+        try:
+            category_id = int(category_id)
+            selected_category = db.session.get(Category, category_id)
 
-    products = products_query.all()
+            if selected_category:
+                products_query = products_query.filter_by(
+                    category_id=category_id
+                )
+            else:
+                category_id = ""
+
+        except ValueError:
+            category_id = ""
+
+    # Paginate: 12 products per page
+    pagination = products_query.order_by(Product.id.asc()).paginate(
+        page=page,
+        per_page=12,
+        error_out=False
+    )
+
+    products = pagination.items
 
     if search_query and not products:
         flash("No products found!", "danger")
-    if category_id and not products:
+    elif category_id and not products:
         flash("No products found in this category!", "danger")
 
     return render_template(
-        "user/user_home.html",   
+        "user/user_home.html",
         categories=categories,
         products=products,
-        user = User.query.get(session['user_id']),
+        pagination=pagination,
+        selected_category=selected_category,
+        user=User.query.get(session["user_id"])
     )
 
 
@@ -584,6 +621,7 @@ def payment():
         total=total,
     )
 
+
 @app.route("/verify-payment", methods=["POST"])
 @auth_required
 def verify_payment():
@@ -620,6 +658,7 @@ def verify_payment():
         return jsonify({
             "success": True,
             "message": "Order already confirmed.",
+            "redirect_url": url_for("view_orders"),
         }), 200
 
     if payment_record.status != "created":
@@ -639,7 +678,7 @@ def verify_payment():
         }), 400
 
     try:
-        # Confirm the payment with Razorpay's server, not the browser.
+        # Verify payment directly with Razorpay.
         razorpay_payment = fetch_payment(razorpay_payment_id)
 
         if (
@@ -661,19 +700,23 @@ def verify_payment():
                 ),
             }), 400
 
+        # Get all items in this user's cart.
         cart_items = Cart.query.filter_by(user_id=user_id).all()
 
         if not cart_items:
             return jsonify({
                 "success": False,
-                "message": "Your cart is empty. Contact support to resolve this payment.",
+                "message": (
+                    "Your cart is empty. Contact support to resolve this payment."
+                ),
             }), 409
 
-        # Recalculate the total from current database values.
+        # Calculate the total using database prices.
         current_total = Decimal("0.00")
+        products = {}
 
         for item in cart_items:
-            product = Product.query.get(item.product_id)
+            product = db.session.get(Product, item.product_id)
 
             if product is None or item.quantity <= 0:
                 return jsonify({
@@ -681,82 +724,103 @@ def verify_payment():
                     "message": "A cart item is no longer valid.",
                 }), 409
 
-            current_total += Decimal(str(product.price)) * item.quantity
+            if item.quantity > product.quantity:
+                return jsonify({
+                    "success": False,
+                    "message": (
+                        f"Insufficient stock for {product.name}. "
+                        "Please contact support if your payment was captured."
+                    ),
+                }), 409
+
+            products[item.product_id] = product
+
+            current_total += (
+                Decimal(str(product.price)) * item.quantity
+            )
 
         current_total = current_total.quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
+            Decimal("0.01"),
+            rounding=ROUND_HALF_UP,
         )
 
         if int(current_total * 100) != payment_record.amount_paise:
             return jsonify({
                 "success": False,
                 "message": (
-                    "Cart total changed after checkout. "
+                    "Cart total does not match the payment. "
                     "Contact support before retrying."
                 ),
             }), 409
 
-        # First validate that every cart item is available.
-        products = {}
+        # Create an order for EVERY cart item.
+        created_orders = []
 
-        for item in cart_items:
-            product = Product.query.get(item.product_id)
-
-            if product is None:
-                return jsonify({
-                    "success": False,
-                    "message": "A product in your cart no longer exists."
-                }), 409
-
-            if item.quantity > product.quantity:
-                return jsonify({
-                    "success": False,
-                    "message": (
-                        f"Insufficient stock for {product.name}. "
-                        "Please update your cart."
-                    )
-                }), 409
-
-            products[item.product_id] = product
-        
-        # Only after all items pass validation, update inventory and orders.
         for item in cart_items:
             product = products[item.product_id]
 
-            # Reduce available stock
             product.quantity -= item.quantity
 
-            # Create an order for each cart item
-            db.session.add(Order(
+            order = Order(
                 user_id=user_id,
                 product_id=product.id,
                 quantity=item.quantity,
                 price=product.price,
-                datetime=datetime.utcnow()
-            ))
+                datetime=datetime.utcnow(),
+            )
 
-            # Remove this item from the cart
+            db.session.add(order)
+            created_orders.append(order)
+
             db.session.delete(item)
 
         payment_record.razorpay_payment_id = razorpay_payment_id
         payment_record.status = "paid"
 
+        # Commit the order before attempting to send an email.
         db.session.commit()
-
-        return jsonify({
-            "success": True,
-            "message": "Payment successful! Your order is confirmed.",
-            "redirect_url": url_for("view_orders"),
-        }), 200
 
     except Exception:
         db.session.rollback()
-        app.logger.exception("Payment verification/finalization failed")
+        app.logger.exception(
+            "Payment verification/finalization failed"
+        )
 
         return jsonify({
             "success": False,
             "message": (
                 "We could not confirm the order. "
-                "If your payment was deducted, contact support with your payment ID."
+                "If your payment was deducted, contact support "
+                f"with payment ID {razorpay_payment_id}."
             ),
         }), 500
+
+    # Email is sent OUTSIDE the transaction.
+    # An email failure must not undo the successful order.
+    try:
+        user = db.session.get(User, user_id)
+
+        if user and user.email:
+            send_order_confirmation_email(
+                user=user,
+                orders=created_orders,
+                total_amount=current_total,
+                payment_id=razorpay_payment_id,
+            )
+        else:
+            app.logger.warning(
+                "Order confirmed, but user %s has no email address.",
+                user_id,
+            )
+
+    except Exception:
+        app.logger.exception(
+            "Order confirmed, but the confirmation email failed."
+        )
+
+    return jsonify({
+        "success": True,
+        "message": "Payment successful! Your order is confirmed.",
+        "redirect_url": url_for("view_orders"),
+    }), 200
+
